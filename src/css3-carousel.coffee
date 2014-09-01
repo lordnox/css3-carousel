@@ -162,7 +162,13 @@
 
   $.fn[pluginName] = (options) ->
     @each (index, selector) ->
+      # do not initialize the plugin twice on the same element
+      return if $(selector).data pluginName
+
+      # create a new plugin for each selected element
       plugin = new Plugin $(@), options
+
+      # and add it to the data-store
       $(selector).data pluginName, plugin
     # return for jQuery chaining
     @
