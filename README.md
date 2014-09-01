@@ -5,3 +5,4 @@ ToDo:
  - [ ] Add mouseover event
 
 Based on work for [KSS services/solutions](http://www.kss-online.com/)
+Refactored and updated on work for [Raiffeisen](http://raiffeisen.ch/)
