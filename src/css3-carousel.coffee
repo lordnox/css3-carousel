@@ -1,157 +1,173 @@
-(($, window, undefined_) ->
-  deepCopy = (source, destination, depth, max) ->
-    return destination if depth > max
-    for property of source
-      if property of destination
-        destination[property] = deepCopy(source[property], destination[property], depth + 1, max) if typeof (source[property]) is "object"
-      else
-        destination[property] = source[property]
-    destination
+(($, window, undef) ->
 
-  css3Carousel = (selector, options) ->
-    element = $(selector)
+  pluginName = "css3Carousel"
+
+  defaults =
+    start    : 0
+    interval : 5000
+    autoplay : true
+    item     : ".css3-carousel-item"
+    base     : ""
+    position :
+      "0"     : "css3-carousel-visibility-visible"
+      default : "css3-carousel-visibility-hidden"
+
+    direction :
+      forward  : "css3-carousel-direction-forward"
+      backward : "css3-carousel-direction-backward"
+
+    control   :
+      next : ".css3-carousel-control.css3-carousel-control-next"
+      prev : ".css3-carousel-control.css3-carousel-control-prev"
+
+  Plugin = (element, options) ->
     return if not element or not element.length
-    options = options or {}
-    defaults =
-      start: 0
-      interval: 5000
-      autoplay: true
-      item: ".css3-carousel-item"
-      base: ""
-      position:
-        prevPrevPrev: "css3-carousel-visibility-hidden"
-        prevPrev: "css3-carousel-visibility-hidden"
-        prev: "css3-carousel-visibility-hidden"
-        current: "css3-carousel-visibility-visible"
-        next: "css3-carousel-visibility-hidden"
-        nextNext: "css3-carousel-visibility-hidden"
-        nextNextNext: "css3-carousel-visibility-hidden"
-        default: "css3-carousel-visibility-hidden"
 
-      direction:
-        forward: "css3-carousel-direction-forward"
-        reverse: "css3-carousel-direction-reverse"
+    # Deep-Merge the options
+    options = $.extend true, {}, defaults, options or {}
 
-      control:
-        next: ".css3-carousel-control.css3-carousel-control-next"
-        prev: ".css3-carousel-control.css3-carousel-control-prev"
-
-    options = deepCopy(defaults, options or {}, 0, 3)
-    element.addClass options.base  if options.base
+    # collect classes "owned" by this plugin, these will be added and removed
+    # based on the state of the plugin
     classesToRemove = Object.keys(options.position).map((key) ->
       options.position[key]
     ).join(" ")
+
+    # current state of the plugin
     scope =
-      elements: 0
-      position: options.start
+      elements : 0
+      position : options.start
+      timer    : undefined
 
+    # adds +1 to the position and wraps around
+    nextPosition = (position, n) -> (position + (n or 1)) % scope.elements
 
-    # adds +1 to the position
-    nextPosition = (position, n) ->
-      (position + (n or 1)) % scope.elements
-
-
-    # adds -1 to the position
-    prevPosition = (position, n) ->
-      (position - (n or 1) + scope.elements) % scope.elements
-
+    # adds -1 to the position and wraps around
+    prevPosition = (position, n) -> (position - (n or 1) + scope.elements) % scope.elements
 
     # returns the class of the position
     positionClass = (position) ->
-      pos = scope.position
+      delta = position - scope.position
 
-      # switch in order to find the most relevant case:
-      switch true
+      # check if the delta exists
+      return options.position[delta] if options.position[delta]
 
-        # if position is the current position
-        when position is pos
-          options.position.current
+      # modify to have it be in the correct range
+      modded = delta % scope.elements
 
-        # if position is right before current position:
-        when position is prevPosition(pos, 1)
-          options.position.prev
+      # check if the modded version exists
+      return options.position[modded] if options.position[modded]
 
-        # if position is right after current position:
-        when position is nextPosition(pos, 1)
-          options.position.next
+      # if delta as greater than zero
+      if delta > 0
+        # decrease modded by elements count
+        modded -= scope.elements
 
-        # if position is 2 before current position:
-        when position is prevPosition(pos, 2)
-          options.position.prevPrev
+        # check again
+        return options.position[modded] if options.position[modded]
 
-        # if position is 3 before current position:
-        when position is prevPosition(pos, 3)
-          options.position.prevPrevPrev
+      # else delta is less than zero
+      else
+        # increase modded by elements count
+        modded += scope.elements
 
-        # if position is 2 after current position:
-        when position is nextPosition(pos, 2)
-          options.position.nextNext
+        # check again
+        return options.position[modded] if options.position[modded]
 
-        # if position is 3 after current position:
-        when position is nextPosition(pos, 3)
-          options.position.nextNextNext
+      # if neither case was a success return the default or an empty string
+      options.position["default"] or ''
 
-        # if neither:
-        else
-          options.position["default"]
-
-    updateClasses = ->
+    # the update function will be called each time a change happens
+    update = ->
+      # get all items
       items = $(options.item, element)
+
+      # update the elements count
       scope.elements = items.length
+
+      # update all items individually
       items.each (position) ->
-        $(this).removeClass(classesToRemove).addClass positionClass(position)
+        $(this)
+          # by removing all classes
+          .removeClass(classesToRemove)
+          # and adding the correct one
+          .addClass(positionClass position)
 
-    autoplay = timer: `undefined`
-    interval = ->
-      api.next()
+    # interval method
+    interval = -> api.next()
 
+    # start the autoplay feature
     start = ->
-      return if autoplay.timer
-      autoplay.timer = setInterval(interval, options.interval)
+      return if scope.timer
+      scope.timer = setInterval interval, options.interval
 
+    # stop the autoplay feature
     stop = ->
-      return unless autoplay.timer
-      autoplay.timer = clearInterval(autoplay.timer)
+      return unless scope.timer
+      scope.timer = clearInterval scope.timer
 
+    # define api
     api =
+      ###
+      # use this to move to a specific position
+      # @param position
+      # @param direction (true = forward, false = backwards)
+      ###
+      pos: (position, direction = true) ->
+        # set the new current position
+        scope.position  = position
+
+        # set the current direction
+        scope.direction = if direction then options.direction.forward else options.direction.backward
+
+        # find class to be removed
+        rmClass = if not direction then options.direction.forward else options.direction.backward
+
+        # update the directional classes
+        element.removeClass(rmClass).addClass scope.direction
+
+        # run the updater
+        update()
+
+      # shorthand to move one position backward
       prev: ->
-        scope.position = prevPosition(scope.position)
-        scope.direction = options.direction.reverse
-        element.removeClass(options.direction.forward).addClass options.direction.reverse
-        updateClasses()
+        api.pos prevPosition(scope.position), false
 
+      # shorthand to move one position forward
       next: ->
-        scope.position = nextPosition(scope.position)
-        scope.direction = options.direction.forwards
-        element.removeClass(options.direction.reverse).addClass options.direction.forward
-        updateClasses()
+        api.pos prevPosition(scope.position), true
 
-      update: updateClasses
-      start: start
-      stop: stop
+      # link the api methods
+      update : update
+      start  : start
+      stop   : stop
 
-    $(options.control.next).click (event) ->
+    # stop the event propagation
+    clickHandler = (fn) -> (event) ->
       event.stopPropagation()
       api.stop()
-      api.next()
+      fn.call @, event
 
-    $(options.control.prev).click (event) ->
-      event.stopPropagation()
-      api.stop()
-      api.prev()
+    # register the control buttons
+    $(options.control.next).click clickHandler api.next
+    $(options.control.next).click clickHandler api.prev
 
-    updateClasses()
-    start()  if options.autoplay
+    # run the first update to setup all classes (direction will NOT be set)
+    update()
+
+    # start the interval handler
+    start() if options.autoplay
+
+    # return the api
     api
 
-  $.fn.css3Carousel = (options) ->
+  $.fn[pluginName] = (options) ->
     @each (index, selector) ->
-      plugin = new css3Carousel(selector, options)
-      $(selector).data "css3Carousel", plugin
+      plugin = new Plugin $(@), options
+      $(selector).data pluginName, plugin
+    # return for jQuery chaining
+    @
 
-    this
-
-  $ ->
-    $(".css3-carousel").css3Carousel()
+  # very simple on-ready call, no fancy data-attribute options
+  $ -> $(".css3-carousel").css3Carousel()
 
 ) jQuery, window
